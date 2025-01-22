@@ -4,14 +4,10 @@ from datetime import datetime
 import requests
 import pandas as pd
 
-
 st.title("Clínica Veterinaria - Gestión de Citas y Tratamientos 🐾")
 
 # Configuración del backend
 backend = "http://backend:8000"  # Cambia esta URL si es necesario
-
-# Título principal
-st.title("Clínica Veterinaria - Gestión de Citas 🐾")
 
 # Función para enviar datos al backend
 def send_to_backend(endpoint, data):
@@ -22,7 +18,7 @@ def send_to_backend(endpoint, data):
         else:
             return False, f"Error: {response.status_code}"
     except Exception as e:
-        return False, str(e)
+        return False, f"Error de conexión: {str(e)}"
 
 # Función para recuperar citas desde el backend
 def get_citas_from_backend():
@@ -33,7 +29,7 @@ def get_citas_from_backend():
         else:
             return None, f"Error al obtener citas: {response.status_code}"
     except Exception as e:
-        return None, str(e)
+        return None, f"Error de conexión: {str(e)}"
 
 # Inicializar las citas en el estado de la aplicación
 if "events" not in st.session_state:
@@ -63,10 +59,7 @@ calendar_options = {
 state = calendar(
     events=st.session_state["events"],
     options=calendar_options,
-    custom_css="""
-        .fc-event-title { font-weight: bold; }
-        .fc-toolbar-title { font-size: 1.5rem; }
-    """,
+    custom_css=""".fc-event-title { font-weight: bold; } .fc-toolbar-title { font-size: 1.5rem; }""",
     key='calendar'
 )
 
@@ -79,24 +72,28 @@ if state.get("select"):
         fecha = state["select"]["start"][:10]
         st.write(f"Fecha seleccionada: {fecha}")
         submit = st.form_submit_button("Guardar Cita")
+
         if submit:
-            data = {
-                "animal": nombre_animal,
-                "dueno": nombre_dueno,
-                "tratamiento": tratamiento,
-                "fecha": fecha
-            }
-            success, message = send_to_backend("citas", data)  # Endpoint para guardar cita
-            if success:
-                st.success(message)
-                st.session_state["events"].append({
-                    "title": f"{nombre_animal} - {tratamiento}",
-                    "start": fecha,
-                    "end": fecha,
-                    "color": "#FF6C6C"
-                })
+            if not nombre_animal or not nombre_dueno:
+                st.error("Por favor, complete todos los campos.")
             else:
-                st.error(message)
+                data = {
+                    "animal": nombre_animal,
+                    "dueno": nombre_dueno,
+                    "tratamiento": tratamiento,
+                    "fecha": fecha
+                }
+                success, message = send_to_backend("citas", data)  # Endpoint para guardar cita
+                if success:
+                    st.success(message)
+                    st.session_state["events"].append({
+                        "title": f"{nombre_animal} - {tratamiento}",
+                        "start": fecha,
+                        "end": fecha,
+                        "color": "#FF6C6C"
+                    })
+                else:
+                    st.error(message)
 
 # Gestión de eventos existentes (modificación/cancelación)
 if state.get("eventClick"):
@@ -105,7 +102,17 @@ if state.get("eventClick"):
         event = state["eventClick"]["event"]
         st.session_state["events"] = [e for e in st.session_state["events"] if not (
             e["title"] == event["title"] and e["start"] == event["start"] and e["end"] == event["end"])]
-        st.success("Cita cancelada con éxito.")
+
+        # Llamar al backend para cancelar la cita
+        event_id = event.get('id')
+        if event_id:
+            response = requests.delete(f"{backend}/citas/{event_id}")
+            if response.status_code == 200:
+                st.success("Cita cancelada con éxito.")
+            else:
+                st.error("Error al cancelar la cita.")
+        else:
+            st.error("No se pudo identificar la cita para cancelar.")
 
 # --- Gestión de Tratamientos ---
 st.header("Gestión de Tratamientos 🩺")
@@ -132,10 +139,6 @@ df_tratamientos = pd.DataFrame({
     "Precio (€)": list(st.session_state["tratamientos_data"].values())
 })
 st.table(df_tratamientos)
-
-# Inicializar datos de tratamientos si no existen en el estado
-if "tratamientos_data" not in st.session_state:
-    st.session_state["tratamientos_data"] = {}
 
 # Mostrar checkbox y formulario para añadir tratamientos
 if st.checkbox("Añadir Nuevo Tratamiento"):
@@ -203,44 +206,21 @@ estado_pago = st.selectbox("Estado del pago", ["No Pagado", "Pagado"])
 generar_factura = st.button("Generar Factura")
 
 if generar_factura:
-    # Calcular el total sumando el precio de cada tratamiento seleccionado
-    total = sum(tratamientos_data[t] for t in tratamientos_realizados if t in tratamientos_data)
-
-    # Crear la data de la factura
-    nueva_factura = {
-        "cliente": cliente,
-        "tratamientos": tratamientos_realizados,
-        "total": total,
-        "metodo_pago": forma_pago,
-        "estado_pago": estado_pago
-    }
-
-
-    st.session_state["facturas_registradas"].append(nueva_factura)
-    st.success(f"Factura generada y guardada con éxito para {cliente}. Total: €{total}")
-    mostrar_facturas()
+    if cliente and tratamientos_realizados:
+        total = sum(tratamientos_data[t] for t in tratamientos_realizados if t in tratamientos_data)
+        nueva_factura = {
+            "cliente": cliente,
+            "tratamientos": tratamientos_realizados,
+            "total": total,
+            "metodo_pago": forma_pago,
+            "estado_pago": estado_pago
+        }
+        st.session_state["facturas_registradas"].append(nueva_factura)
+        st.success(f"Factura generada y guardada con éxito para {cliente}. Total: €{total}")
+        mostrar_facturas()
+    else:
+        st.error("Por favor, complete todos los campos.")
 
 # Botón para ver todas las facturas
 if st.button("Ver todas las facturas"):
     mostrar_facturas()
-
-
-# Cargar citas en el calendario desde el estado global
-if "events" not in st.session_state:
-    st.session_state["events"] = []
-
-# Recuperar citas desde el backend
-if not st.session_state["events"]:
-    response = requests.get(f"{backend}/envio/")
-    if response.status_code == 200:
-        citas = response.json()
-        for cita in citas:
-            st.session_state["events"].append({
-                "title": f"{cita['animal']} - {cita['tratamiento']}",
-                "start": cita["fecha"],
-                "end": cita["fecha"],
-                "color": "#FF6C6C"
-            })
-    else:
-        st.error("No se pudieron cargar las citas del backend.")
-

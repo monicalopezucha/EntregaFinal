@@ -1,6 +1,6 @@
-import streamlit as st
 import requests
 from datetime import datetime
+import re
 
 # URL del microservicio FastAPI
 url_citas = "http://backend:8000/citas/"
@@ -20,21 +20,32 @@ with st.form("envio_citas"):
     hora = st.time_input("Hora de la cita", datetime.now().time())
     submit_cita = st.form_submit_button(label="Registrar Cita")
 
-if submit_cita:
-    # Crear el payload
-    payload = {
-        "animal": nombre_animal,
-        "dueno": nombre_dueno,
-        "tratamiento": tratamiento,
-        "fecha": str(fecha),
-    }
+# Validación de solo letras en nombre_animal y nombre_dueno
+def es_nombre_valido(nombre):
+    return bool(re.match("^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$", nombre))
 
-    # Enviar al backend
-    response = requests.post(url_citas, json=payload)
-    if response.status_code == 200:
-        st.success("Cita registrada correctamente")
+if submit_cita:
+    if not es_nombre_valido(nombre_animal):
+        st.error("El nombre del animal solo debe contener letras.")
+    elif not es_nombre_valido(nombre_dueno):
+        st.error("El nombre del dueño solo debe contener letras.")
     else:
-        st.error(f"Error al registrar la cita: {response.status_code}")
+        # Crear el payload
+        payload = {
+            "animal": nombre_animal,
+            "dueno": nombre_dueno,
+            "tratamiento": tratamiento,
+            "fecha": str(fecha),
+        }
+
+        # Enviar al backend
+        response = requests.post(url_citas, json=payload)
+        if response.status_code == 200:
+            st.success("Cita registrada correctamente")
+        elif response.status_code == 409:  # Si el animal ya tiene una cita
+            st.warning("Ya existe una cita registrada para este animal.")
+        else:
+            st.error(f"Error al registrar la cita: {response.status_code}")
 
 # Mostrar citas registradas
 if st.button("Ver todas las citas"):
@@ -74,20 +85,29 @@ if accion_producto == "Alta de productos":
         "Productos de belleza"
     ])
     marca = st.text_input("Marca del producto")
-    precio = st.number_input("Precio del producto", min_value=0.0, step=0.1)
+    precio = st.number_input("Precio del producto", min_value=0.1, step=0.1)  # Evitar precio 0
     cantidad = st.number_input("Cantidad del producto", min_value=1, step=1)
     if st.button("Registrar producto"):
-        payload = {
-            "categoria": categoria,
-            "marca": marca,
-            "precio": precio,
-            "cantidad": cantidad
-        }
-        response = requests.post(url_productos, json=payload)
+        # Verificar si ya existe un producto con la misma marca
+        response = requests.get(f"{url_productos}?search={marca}")
         if response.status_code == 200:
-            st.success(f"Producto '{marca}' registrado correctamente.")
+            productos_existentes = response.json()
+            if productos_existentes:
+                st.warning(f"El producto '{marca}' ya está registrado.")
+            else:
+                payload = {
+                    "categoria": categoria,
+                    "marca": marca,
+                    "precio": precio,
+                    "cantidad": cantidad
+                }
+                response = requests.post(url_productos, json=payload)
+                if response.status_code == 200:
+                    st.success(f"Producto '{marca}' registrado correctamente.")
+                else:
+                    st.error(f"Error al registrar el producto: {response.status_code}")
         else:
-            st.error(f"Error al registrar el producto: {response.status_code}")
+            st.error(f"Error al verificar el producto: {response.status_code}")
 
 elif accion_producto == "Baja de productos":
     st.subheader("Eliminar Producto")
@@ -97,13 +117,15 @@ elif accion_producto == "Baja de productos":
         response = requests.delete(url_a_eliminar)
         if response.status_code == 200:
             st.success(f"Producto '{producto_a_eliminar}' eliminado correctamente.")
+        elif response.status_code == 404:
+            st.warning(f"El producto '{producto_a_eliminar}' no se encuentra registrado.")
         else:
             st.error(f"Error al eliminar el producto: {response.status_code}")
 
 elif accion_producto == "Modificación de productos":
     st.subheader("Modificar Producto")
     producto_a_modificar = st.text_input("Introduce la marca del producto a modificar")
-    nuevo_precio = st.number_input("Nuevo precio", min_value=0.0, step=0.1)
+    nuevo_precio = st.number_input("Nuevo precio", min_value=0.1, step=0.1)
 
     if st.button("Modificar producto"):
         if producto_a_modificar and nuevo_precio > 0:
@@ -143,7 +165,6 @@ elif accion_producto == "Venta de productos":
             st.info("No hay productos disponibles para la venta.")
     else:
         st.error(f"Error al obtener los productos: {response.status_code}")
-
 
 elif accion_producto == "Búsqueda de productos":
     st.subheader("Buscar Producto")

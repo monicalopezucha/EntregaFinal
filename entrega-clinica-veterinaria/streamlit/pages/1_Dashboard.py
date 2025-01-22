@@ -16,22 +16,38 @@ if "tratamientos_data" not in st.session_state or len(st.session_state["tratamie
 facturas = st.session_state["facturas_registradas"]
 tratamientos_data = st.session_state["tratamientos_data"]
 
+# Validación de estructura de datos
+if not isinstance(tratamientos_data, dict):
+    st.error("El formato de los datos de tratamientos es incorrecto. Debe ser un diccionario.")
+    st.stop()
+
+if not all(isinstance(factura, dict) for factura in facturas):
+    st.error("El formato de los datos de facturas es incorrecto. Cada factura debe ser un diccionario.")
+    st.stop()
+
 # Crear un DataFrame detallado por cada tratamiento de cada factura
 # Cada fila representará un tratamiento realizado a un cliente en una factura
 rows = []
 for factura in facturas:
-    cliente = factura["cliente"]
-    lista_tratamientos = factura["tratamientos"]
-    # Para cada tratamiento en la factura, añadimos una fila
+    cliente = factura.get("cliente")
+    lista_tratamientos = factura.get("tratamientos", [])
+    estado_pago = factura.get("estado_pago", "Desconocido")
+    metodo_pago = factura.get("metodo_pago", "Desconocido")
+    total_factura = factura.get("total", 0.0)
+
+    if not isinstance(cliente, str) or not isinstance(lista_tratamientos, list):
+        st.error("Formato incorrecto en los datos de una factura. Verifique que el cliente sea un texto y los tratamientos una lista.")
+        st.stop()
+
     for t in lista_tratamientos:
         precio = tratamientos_data.get(t, 0.0)
         rows.append({
             "cliente": cliente,
             "tratamiento": t,
             "precio": precio,
-            "estado_pago": factura["estado_pago"],
-            "metodo_pago": factura["metodo_pago"],
-            "total_factura": factura["total"]
+            "estado_pago": estado_pago,
+            "metodo_pago": metodo_pago,
+            "total_factura": total_factura
         })
 
 df_detalle = pd.DataFrame(rows)
@@ -61,8 +77,8 @@ df_mensual = pd.DataFrame(data_mensual)
 # 5. Resumen numérico
 total_tratamientos = df_tratamientos["cantidad"].sum()
 
-# Ingresos totales
-ingresos_totales = sum(f["total"] for f in facturas)
+# Validación adicional para total de facturas
+ingresos_totales = sum(f.get("total", 0.0) for f in facturas if isinstance(f, dict))
 
 # Total de clientes
 total_clientes = df_detalle["cliente"].nunique()
