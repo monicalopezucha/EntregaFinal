@@ -101,14 +101,6 @@ def search_productos(search: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No se encontraron productos.")
     return productos
 
-# Rutas para realizar ventas
-@router_productos.post("/{marca}/venta")
-def sell_producto(marca: str, cantidad: int, db: Session = Depends(get_db)):
-    producto, error = sell_producto(db, marca, cantidad)
-    if error:
-        raise HTTPException(status_code=400, detail=error)
-    return producto
-
 # Rutas para obtener tratamientos
 @router_tratamientos.get("/list")
 def get_tratamientos(db: Session = Depends(get_db)):

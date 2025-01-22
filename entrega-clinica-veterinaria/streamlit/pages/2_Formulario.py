@@ -88,27 +88,40 @@ if accion_producto == "Alta de productos":
     marca = st.text_input("Marca del producto")
     precio = st.number_input("Precio del producto", min_value=0.1, step=0.1)  # Evitar precio 0
     cantidad = st.number_input("Cantidad del producto", min_value=1, step=1)
+
     if st.button("Registrar producto"):
-        # Verificar si ya existe un producto con la misma marca
-        response = requests.get(f"{url_productos}?search={marca}")
-        if response.status_code == 200:
-            productos_existentes = response.json()
-            if productos_existentes:
-                st.warning(f"El producto '{marca}' ya está registrado.")
-            else:
-                payload = {
-                    "categoria": categoria,
-                    "marca": marca,
-                    "precio": precio,
-                    "cantidad": cantidad
-                }
-                response = requests.post(url_productos, json=payload)
-                if response.status_code == 200:
-                    st.success(f"Producto '{marca}' registrado correctamente.")
-                else:
-                    st.error(f"Error al registrar el producto: {response.status_code}")
+        if not marca.strip():
+            st.warning("El campo 'Marca del producto' no puede estar vacío.")
         else:
-            st.error(f"Error al verificar el producto: {response.status_code}")
+            try:
+                # Verificar si ya existe un producto con la misma marca
+                response = requests.get(f"{url_productos}?search={marca}")
+                if response.status_code == 200:
+                    productos_existentes = response.json()
+
+                    # Comprobar si hay productos con la misma marca
+                    if productos_existentes and any(
+                            prod.get("marca", "").lower() == marca.lower()
+                            for prod in productos_existentes
+                    ):
+                        st.warning(f"El producto '{marca}' ya está registrado.")
+                    else:
+                        # Crear el nuevo producto si no existe
+                        payload = {
+                            "categoria": categoria,
+                            "marca": marca,
+                            "precio": precio,
+                            "cantidad": cantidad
+                        }
+                        response = requests.post(url_productos, json=payload)
+                        if response.status_code == 200:
+                            st.success(f"Producto '{marca}' registrado correctamente.")
+                        else:
+                            st.error(f"Error al registrar el producto: {response.status_code}")
+                else:
+                    st.error(f"Error al verificar el producto: {response.status_code}")
+            except Exception as e:
+                st.error(f"Error de conexión: {str(e)}")
 
 elif accion_producto == "Baja de productos":
     st.subheader("Eliminar Producto")

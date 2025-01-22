@@ -7,33 +7,33 @@ import pandas as pd
 st.title("Clínica Veterinaria - Gestión de Citas y Tratamientos 🐾")
 
 # Configuración del backend
-backend = "http://backend:8000"  # Cambia esta URL si es necesario
+backend_url = "http://backend:8000"
 
 # Función para enviar datos al backend
 def send_to_backend(endpoint, data):
     try:
-        response = requests.post(f"{backend}/{endpoint}", json=data)
+        response = requests.post(f"{backend_url}/{endpoint}", json=data)
         if response.status_code == 200:
             return True, "Operación realizada con éxito"
         else:
-            return False, f"Error: {response.status_code}"
+            return False, f"Error {response.status_code}: {response.text}"
     except Exception as e:
         return False, f"Error de conexión: {str(e)}"
 
-# Función para recuperar citas desde el backend
-def get_citas_from_backend():
+# Función para recuperar datos desde el backend
+def get_from_backend(endpoint):
     try:
-        response = requests.get(f"{backend}/citas")  # Cambia el endpoint si es necesario
+        response = requests.get(f"{backend_url}/{endpoint}")
         if response.status_code == 200:
             return response.json(), None
         else:
-            return None, f"Error al obtener citas: {response.status_code}"
+            return None, f"Error {response.status_code}: {response.text}"
     except Exception as e:
         return None, f"Error de conexión: {str(e)}"
 
-# Inicializar las citas en el estado de la aplicación
+# Inicializar citas en el estado de la aplicación
 if "events" not in st.session_state:
-    citas, error = get_citas_from_backend()
+    citas, error = get_from_backend("citas")
     if error:
         st.error(error)
         st.session_state["events"] = []
@@ -42,8 +42,8 @@ if "events" not in st.session_state:
             {"title": f"{cita['animal']} - {cita['tratamiento']}",
              "start": cita["fecha"],
              "end": cita["fecha"],
-             "color": "#FF6C6C"}
-            for cita in citas
+             "color": "#FF6C6C",
+             "id": cita["id"]} for cita in citas
         ]
 
 # Opciones de configuración del calendario
@@ -63,7 +63,7 @@ state = calendar(
     key='calendar'
 )
 
-# Gestionar nueva cita al seleccionar una fecha en el calendario
+# Añadir nueva cita
 if state.get("select"):
     with st.form("Nueva Cita"):
         nombre_animal = st.text_input("Nombre del animal")
@@ -77,13 +77,13 @@ if state.get("select"):
             if not nombre_animal or not nombre_dueno:
                 st.error("Por favor, complete todos los campos.")
             else:
-                data = {
+                nueva_cita = {
                     "animal": nombre_animal,
                     "dueno": nombre_dueno,
                     "tratamiento": tratamiento,
                     "fecha": fecha
                 }
-                success, message = send_to_backend("citas", data)  # Endpoint para guardar cita
+                success, message = send_to_backend("citas", nueva_cita)
                 if success:
                     st.success(message)
                     st.session_state["events"].append({
@@ -95,52 +95,39 @@ if state.get("select"):
                 else:
                     st.error(message)
 
-# Gestión de eventos existentes (modificación/cancelación)
+# Modificar o cancelar cita existente
 if state.get("eventClick"):
     st.write(f"Modificar o cancelar cita: {state['eventClick']['event']['title']}")
-    if st.button("Cancelar Cita"):
-        event = state["eventClick"]["event"]
-        st.session_state["events"] = [e for e in st.session_state["events"] if not (
-            e["title"] == event["title"] and e["start"] == event["start"] and e["end"] == event["end"])]
+    event_id = state["eventClick"]["event"]["id"]
 
-        # Llamar al backend para cancelar la cita
-        event_id = event.get('id')
-        if event_id:
-            response = requests.delete(f"{backend}/citas/{event_id}")
-            if response.status_code == 200:
-                st.success("Cita cancelada con éxito.")
-            else:
-                st.error("Error al cancelar la cita.")
+    if st.button("Cancelar Cita"):
+        response = requests.delete(f"{backend_url}/citas/{event_id}")
+        if response.status_code == 200:
+            st.success("Cita cancelada con éxito.")
+            st.session_state["events"] = [e for e in st.session_state["events"] if e["id"] != event_id]
         else:
-            st.error("No se pudo identificar la cita para cancelar.")
+            st.error(f"Error al cancelar la cita: {response.text}")
 
 # --- Gestión de Tratamientos ---
 st.header("Gestión de Tratamientos 🩺")
 
-# Inicializamos los tratamientos en session_state si no existen
+# Inicializar tratamientos en el estado
 if "tratamientos_data" not in st.session_state:
-    st.session_state["tratamientos_data"] = {
-        "Análisis: Sangre y Hormonales": 30.0,
-        "Vacunación": 20.0,
-        "Desparasitación": 15.0,
-        "Revisión General": 25.0,
-        "Revisión Cardiología": 40.0,
-        "Revisión Cutánea": 35.0,
-        "Ecografía": 50.0,
-        "Cirugía: Castración": 100.0,
-        "Limpieza Dental": 60.0
-    }
+    tratamientos, error = get_from_backend("tratamientos")
+    if error:
+        st.error(error)
+        st.session_state["tratamientos_data"] = {}
+    else:
+        st.session_state["tratamientos_data"] = {t["nombre"]: t["precio"] for t in tratamientos}
 
+tratamientos_data = st.session_state["tratamientos_data"]
 st.write("Tratamientos disponibles (con precios):")
-
-# Mostrar tabla de tratamientos a partir de session_state
 df_tratamientos = pd.DataFrame({
-    "Tratamiento": list(st.session_state["tratamientos_data"].keys()),
-    "Precio (€)": list(st.session_state["tratamientos_data"].values())
+    "Tratamiento": list(tratamientos_data.keys()),
+    "Precio (€)": list(tratamientos_data.values())
 })
 st.table(df_tratamientos)
 
-# Mostrar checkbox y formulario para añadir tratamientos
 if st.checkbox("Añadir Nuevo Tratamiento"):
     with st.form("Nuevo Tratamiento"):
         nombre_tratamiento = st.text_input("Nombre del Tratamiento")
@@ -149,65 +136,41 @@ if st.checkbox("Añadir Nuevo Tratamiento"):
 
         if submit_tratamiento:
             if nombre_tratamiento and precio >= 0:
-                # Enviar datos al backend
-                success, message = send_to_backend("tratamientos", {"nombre": nombre_tratamiento, "precio": precio})
-
+                nuevo_tratamiento = {"nombre": nombre_tratamiento, "precio": precio}
+                success, message = send_to_backend("tratamientos", nuevo_tratamiento)
                 if success:
-                    # Guardar en el estado
                     st.session_state["tratamientos_data"][nombre_tratamiento] = precio
-                    st.success("Tratamiento añadido correctamente")
+                    st.success("Tratamiento añadido correctamente.")
                 else:
-                    st.error(f"Error al guardar el tratamiento en el backend: {message}")
+                    st.error(f"Error al guardar el tratamiento: {message}")
             else:
-                st.error("Por favor, introduzca un nombre de tratamiento válido y un precio mayor o igual a 0.")
+                st.error("Por favor, complete todos los campos.")
 
-# Crear y mostrar la tabla actualizada si hay tratamientos
-tratamientos_data = st.session_state["tratamientos_data"]
-if tratamientos_data:
-    df_tratamientos = pd.DataFrame({
-        "Tratamiento": list(tratamientos_data.keys()),
-        "Precio (€)": list(tratamientos_data.values())
-    })
-    st.table(df_tratamientos)
-else:
-    st.info("No hay tratamientos registrados aún.")
+# --- Generación de Facturas ---
+st.header("Gestión de Facturas 📄")
 
-# Funcionalidad: Generación de Facturas
-st.title("Gestión de Facturas 📄")
-
-# Inicializar la lista de facturas registradas si no existe
-if "facturas_registradas" not in st.session_state:
-    st.session_state["facturas_registradas"] = []
-
-# Función para mostrar las facturas registradas
 def mostrar_facturas():
-    if st.session_state["facturas_registradas"]:
-        st.write("Listado de Facturas Registradas:")
-        for factura in st.session_state["facturas_registradas"]:
+    facturas, error = get_from_backend("facturas")
+    if error:
+        st.error(error)
+    elif facturas:
+        st.write("Listado de Facturas:")
+        for factura in facturas:
             st.write(
-                f"Cliente: {factura['cliente']}, "
-                f"Tratamientos: {', '.join(factura['tratamientos'])}, "
-                f"Total: €{factura['total']}, "
-                f"Método de pago: {factura['metodo_pago']}, "
-                f"Estado: {factura['estado_pago']}"
+                f"Fecha: {factura['fecha_emision']}, Cliente: {factura['cliente']}, "
+                f"Total: €{factura['total']}, Método de pago: {factura['metodo_pago']}"
             )
     else:
         st.info("No hay facturas registradas.")
 
-# Formulario para generar una nueva factura
 st.subheader("Generar Nueva Factura")
 cliente = st.text_input("Nombre del cliente")
-tratamientos_realizados = st.multiselect(
-    "Tratamientos realizados",
-    list(tratamientos_data.keys())
-)
+tratamientos_realizados = st.multiselect("Tratamientos realizados", list(tratamientos_data.keys()))
 forma_pago = st.selectbox("Método de pago", ["Efectivo", "Tarjeta", "Transferencia", "Otros"])
 estado_pago = st.selectbox("Estado del pago", ["No Pagado", "Pagado"])
-generar_factura = st.button("Generar Factura")
-
-if generar_factura:
+if st.button("Generar Factura"):
     if cliente and tratamientos_realizados:
-        total = sum(tratamientos_data[t] for t in tratamientos_realizados if t in tratamientos_data)
+        total = sum(tratamientos_data[t] for t in tratamientos_realizados)
         nueva_factura = {
             "cliente": cliente,
             "tratamientos": tratamientos_realizados,
@@ -215,12 +178,13 @@ if generar_factura:
             "metodo_pago": forma_pago,
             "estado_pago": estado_pago
         }
-        st.session_state["facturas_registradas"].append(nueva_factura)
-        st.success(f"Factura generada y guardada con éxito para {cliente}. Total: €{total}")
-        mostrar_facturas()
+        success, message = send_to_backend("facturas", nueva_factura)
+        if success:
+            st.success(f"Factura generada correctamente para {cliente}. Total: €{total}")
+        else:
+            st.error(f"Error al guardar la factura: {message}")
     else:
-        st.error("Por favor, complete todos los campos.")
+        st.error("Complete todos los campos.")
 
-# Botón para ver todas las facturas
-if st.button("Ver todas las facturas"):
+if st.button("Ver Facturas"):
     mostrar_facturas()
