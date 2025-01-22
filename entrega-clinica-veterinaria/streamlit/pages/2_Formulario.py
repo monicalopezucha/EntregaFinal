@@ -1,6 +1,7 @@
 import requests
 from datetime import datetime
 import re
+import streamlit as st
 
 # URL del microservicio FastAPI
 url_citas = "http://backend:8000/citas/"
