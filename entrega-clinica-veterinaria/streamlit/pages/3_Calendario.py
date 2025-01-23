@@ -146,11 +146,6 @@ if st.checkbox("Añadir Nuevo Tratamiento"):
             else:
                 st.error("Por favor, complete todos los campos.")
 
-st.subheader("Generar Nueva Factura")
-
-cliente = st.text_input("Nombre del cliente")
-tratamientos_realizados = st.multiselect("Tratamientos realizados", list(tratamientos_data.keys()))
-forma_pago = st.selectbox("Método de pago", ["Efectivo", "Tarjeta", "Transferencia", "Otros"])
 
 # Funcionalidad: Generación de Facturas
 st.title("Gestión de Facturas 📄")
