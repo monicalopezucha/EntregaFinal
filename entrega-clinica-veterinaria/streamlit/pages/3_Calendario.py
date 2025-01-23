@@ -146,45 +146,83 @@ if st.checkbox("Añadir Nuevo Tratamiento"):
             else:
                 st.error("Por favor, complete todos los campos.")
 
-# --- Generación de Facturas ---
-st.header("Gestión de Facturas 📄")
+st.subheader("Generar Nueva Factura")
 
+cliente = st.text_input("Nombre del cliente")
+tratamientos_realizados = st.multiselect("Tratamientos realizados", list(tratamientos_data.keys()))
+forma_pago = st.selectbox("Método de pago", ["Efectivo", "Tarjeta", "Transferencia", "Otros"])
+
+# Funcionalidad: Generación de Facturas
+st.title("Gestión de Facturas 📄")
+
+# Inicializar la lista de facturas registradas si no existe
+if "facturas_registradas" not in st.session_state:
+    st.session_state["facturas_registradas"] = []
+
+# Función para mostrar las facturas registradas
 def mostrar_facturas():
-    facturas, error = get_from_backend("facturas")
-    if error:
-        st.error(error)
-    elif facturas:
-        st.write("Listado de Facturas:")
-        for factura in facturas:
+    if st.session_state["facturas_registradas"]:
+        st.write("Listado de Facturas Registradas:")
+        for factura in st.session_state["facturas_registradas"]:
             st.write(
-                f"Fecha: {factura['fecha_emision']}, Cliente: {factura['cliente']}, "
-                f"Total: €{factura['total']}, Método de pago: {factura['metodo_pago']}"
+                f"Cliente: {factura['cliente']}, "
+                f"Tratamientos: {', '.join(factura['tratamientos'])}, "
+                f"Total: €{factura['total']}, "
+                f"Método de pago: {factura['metodo_pago']}, "
+                f"Estado: {factura['estado_pago']}"
             )
     else:
         st.info("No hay facturas registradas.")
 
+# Formulario para generar una nueva factura
 st.subheader("Generar Nueva Factura")
 cliente = st.text_input("Nombre del cliente")
-tratamientos_realizados = st.multiselect("Tratamientos realizados", list(tratamientos_data.keys()))
+tratamientos_realizados = st.multiselect(
+    "Tratamientos realizados",
+    list(tratamientos_data.keys())
+)
 forma_pago = st.selectbox("Método de pago", ["Efectivo", "Tarjeta", "Transferencia", "Otros"])
 estado_pago = st.selectbox("Estado del pago", ["No Pagado", "Pagado"])
-if st.button("Generar Factura"):
-    if cliente and tratamientos_realizados:
-        total = sum(tratamientos_data[t] for t in tratamientos_realizados)
-        nueva_factura = {
-            "cliente": cliente,
-            "tratamientos": tratamientos_realizados,
-            "total": total,
-            "metodo_pago": forma_pago,
-            "estado_pago": estado_pago
-        }
-        success, message = send_to_backend("facturas", nueva_factura)
-        if success:
-            st.success(f"Factura generada correctamente para {cliente}. Total: €{total}")
-        else:
-            st.error(f"Error al guardar la factura: {message}")
-    else:
-        st.error("Complete todos los campos.")
+generar_factura = st.button("Generar Factura")
 
-if st.button("Ver Facturas"):
+if generar_factura:
+    # Calcular el total sumando el precio de cada tratamiento seleccionado
+    total = sum(tratamientos_data[t] for t in tratamientos_realizados if t in tratamientos_data)
+
+    # Crear la data de la factura
+    nueva_factura = {
+        "cliente": cliente,
+        "tratamientos": tratamientos_realizados,
+        "total": total,
+        "metodo_pago": forma_pago,
+        "estado_pago": estado_pago
+    }
+
+
+    st.session_state["facturas_registradas"].append(nueva_factura)
+    st.success(f"Factura generada y guardada con éxito para {cliente}. Total: €{total}")
     mostrar_facturas()
+
+# Botón para ver todas las facturas
+if st.button("Ver todas las facturas"):
+    mostrar_facturas()
+
+
+# Cargar citas en el calendario desde el estado global
+if "events" not in st.session_state:
+    st.session_state["events"] = []
+
+# Recuperar citas desde el backend
+if not st.session_state["events"]:
+    response = requests.get(f"{backend_url}/envio/")
+    if response.status_code == 200:
+        citas = response.json()
+        for cita in citas:
+            st.session_state["events"].append({
+                "title": f"{cita['animal']} - {cita['tratamiento']}",
+                "start": cita["fecha"],
+                "end": cita["fecha"],
+                "color": "#FF6C6C"
+            })
+    else:
+        st.error("No se pudieron cargar las citas del backend.")
